@@ -2,7 +2,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from database import get_balance, update_balance, get_user, create_user
+from database import get_balance, update_balance, get_user, create_user, get_miner_level
 from utils.embeds import balance_embed
 
 class Economy(commands.Cog):
@@ -17,7 +17,7 @@ class Economy(commands.Cog):
         await interaction.response.send_message(embed=balance_embed(interaction.user, balance))
 
     @app_commands.command(name="pay", description="Pay another user")
-    @app_commands.describe(user: "User to pay", amount: "Amount to pay")
+    @app_commands.describe(user="User to pay", amount="Amount to pay")
     async def pay(self, interaction: discord.Interaction, user: discord.User, amount: int):
         sender_id = interaction.user.id
         await create_user(sender_id)
@@ -25,13 +25,27 @@ class Economy(commands.Cog):
 
         balance = await get_balance(sender_id)
         if amount <= 0:
-            return await interaction.response.send_message("Amount must be positive!", ephemeral=True)
+            await interaction.response.send_message("Amount must be positive!", ephemeral=True)
+            return
         if balance < amount:
-            return await interaction.response.send_message("You don't have enough funds!", ephemeral=True)
+            await interaction.response.send_message("You don't have enough funds!", ephemeral=True)
+            return
 
         await update_balance(sender_id, -amount)
         await update_balance(user.id, amount)
         await interaction.response.send_message(f"Sent **{amount}** {CURRENCY_SYMBOL} to {user.mention}", ephemeral=True)
+
+    @app_commands.command(name="beg", description="Beg for some coins")
+    async def beg(self, interaction: discord.Interaction):
+        user_id = interaction.user.id
+        await create_user(user_id)
+        
+        # Check cooldown (simplified)
+        # In production, use proper cooldown tracking
+        
+        amount = random.randint(1, 100)
+        await update_balance(user_id, amount)
+        await interaction.response.send_message(f"Someone took pity on you! You got **{amount}** {CURRENCY_SYMBOL}")
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Economy(bot))
