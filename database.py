@@ -355,5 +355,85 @@ async def get_all_jobs() -> list:
 
 async def get_job_details(job_name: str) -> dict:
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT min_pay, max_pay, unlock_cost, cooldown FROM 
+        async with db.execute("SELECT min_pay, max_pay, unlock_cost, cooldown FROM jobs WHERE name = ?", (job_name,)) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return {"min_pay": row[0], "max_pay": row[1], "unlock_cost": row[2], "cooldown": row[3]}
+            return None
+
+
+async def add_job(name: str, min_pay: int, max_pay: int, unlock_cost: int, cooldown: int = 3600) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("INSERT OR REPLACE INTO jobs (name, min_pay, max_pay, unlock_cost, cooldown) VALUES (?, ?, ?, ?, ?)",
+                         (name, min_pay, max_pay, unlock_cost, cooldown))
+        await db.commit()
+
+
+async def remove_job(name: str) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM jobs WHERE name = ?", (name,))
+        await db.commit()
+
+
+# Admin Limit Functions
+async def get_user_limit(user_id: int) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT limit_amount FROM admin_limits WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+
+
+async def set_user_limit(user_id: int, amount: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("INSERT OR REPLACE INTO admin_limits (user_id, limit_amount) VALUES (?, ?)", (user_id, amount))
+        await db.commit()
+
+
+# Stock Activity Functions
+async def update_stock_activity(stock_name: str, buy_volume: int = 0, sell_volume: int = 0) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute('''
+            INSERT INTO stock_activity (stock_name, buy_volume, sell_volume)
+            VALUES (?, ?, ?)
+        ''', (stock_name, buy_volume, sell_volume))
+        await db.commit()
+
+
+async def get_stock_volumes(stock_name: str) -> tuple:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT SUM(buy_volume), SUM(sell_volume) FROM stock_activity WHERE stock_name = ?", (stock_name,)) as cursor:
+            return await cursor.fetchone()
+
+
+async def get_user_stocks(user_id: int) -> dict:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT stocks FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            if row and row[0]:
+                stocks = row[0].split(",")
+                return {stock: 1 for stock in stocks}
+            return {}
+
+
+async def create_stock(name: str, owner_id: int) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        try:
+            await db.execute("INSERT INTO stocks (name, buy_price, sell_price, owner_id) VALUES (?, 100, 100, ?)", (name, owner_id))
+            await db.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+
+async def transfer_stock(stock_name: str, new_owner_id: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE stocks SET owner_id = ? WHERE name = ?", (new_owner_id, stock_name))
+        await db.commit()
+
+
+async def get_stock_owner(stock_name: str) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT owner_id FROM stocks WHERE name = ?", (stock_name,)) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else None
  
