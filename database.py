@@ -223,3 +223,137 @@ async def wipe_user(user_id: int) -> None:
 async def restore_user(user_id: int) -> None:
     # Implement backup/restore logic if needed
     pass
+
+# database.py (Add to existing file)
+
+# Add to init_db()
+async def init_db() -> None:
+    # ... existing tables ...
+    
+    # Black Market Gems
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS black_market_gems (
+            gem_name TEXT PRIMARY KEY,
+            buy_price REAL,
+            sell_price REAL,
+            buy_volume INTEGER DEFAULT 0,
+            sell_volume INTEGER DEFAULT 0,
+            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # User Gem Inventory
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS user_gems (
+            user_id INTEGER,
+            gem_name TEXT,
+            quantity INTEGER,
+            FOREIGN KEY(user_id) REFERENCES users(user_id)
+        )
+    ''')
+
+    # User Jobs
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS user_jobs (
+            user_id INTEGER PRIMARY KEY,
+            job_name TEXT,
+            last_worked TIMESTAMP,
+            FOREIGN KEY(job_name) REFERENCES jobs(name)
+        )
+    ''')
+
+    # Admin Limits
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS admin_limits (
+            user_id INTEGER PRIMARY KEY,
+            limit_amount INTEGER
+        )
+    ''')
+
+    # Stock Activity Tracking
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS stock_activity (
+            stock_name TEXT,
+            buy_volume INTEGER DEFAULT 0,
+            sell_volume INTEGER DEFAULT 0,
+            last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    await db.commit()
+
+
+# Black Market Functions
+async def get_gem_price(gem_name: str) -> tuple:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT buy_price, sell_price FROM black_market_gems WHERE gem_name = ?", (gem_name,)) as cursor:
+            return await cursor.fetchone()
+
+
+async def update_gem_price(gem_name: str, buy: float, sell: float) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute('''
+            INSERT OR REPLACE INTO black_market_gems (gem_name, buy_price, sell_price, last_updated)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        ''', (gem_name, buy, sell))
+        await db.commit()
+
+
+async def update_gem_volume(gem_name: str, volume_type: str, amount: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        column = f"{volume_type}_volume"
+        await db.execute(f'''
+            UPDATE black_market_gems 
+            SET {column} = {column} + ? 
+            WHERE gem_name = ?
+        ''', (amount, gem_name))
+        await db.commit()
+
+
+async def get_user_gems(user_id: int) -> dict:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT gem_name, quantity FROM user_gems WHERE user_id = ?", (user_id,)) as cursor:
+            rows = await cursor.fetchall()
+            return {row[0]: row[1] for row in rows}
+
+
+async def update_user_gems(user_id: int, gem: str, quantity: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT quantity FROM user_gems WHERE user_id = ? AND gem_name = ?", (user_id, gem)) as cursor:
+            row = await cursor.fetchone()
+        if row:
+            await db.execute("UPDATE user_gems SET quantity = quantity + ? WHERE user_id = ? AND gem_name = ?", (quantity, user_id, gem))
+        else:
+            await db.execute("INSERT INTO user_gems (user_id, gem_name, quantity) VALUES (?, ?, ?)", (user_id, gem, quantity))
+        await db.commit()
+
+
+# Job Functions
+async def get_user_job(user_id: int) -> dict:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT job_name, last_worked FROM user_jobs WHERE user_id = ?", (user_id,)) as cursor:
+            return await cursor.fetchone()
+
+
+async def set_user_job(user_id: int, job_name: str) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("INSERT OR REPLACE INTO user_jobs (user_id, job_name) VALUES (?, ?)", (user_id, job_name))
+        await db.commit()
+
+
+async def update_last_worked(user_id: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE user_jobs SET last_worked = CURRENT_TIMESTAMP WHERE user_id = ?", (user_id,))
+        await db.commit()
+
+
+async def get_all_jobs() -> list:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT name, min_pay, max_pay, unlock_cost FROM jobs") as cursor:
+            return await cursor.fetchall()
+
+
+async def get_job_details(job_name: str) -> dict:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT min_pay, max_pay, unlock_cost, cooldown FROM 
+ 
